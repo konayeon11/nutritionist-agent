@@ -8,7 +8,8 @@
 │
 ├── agents/                     # 각 기능별 AI Agent 모듈
 │   ├── __init__.py
-│   ├── vision_agent.py         # 냉장고/영수증 이미지 분석
+│   ├── vision_agent.py         # 냉장고 이미지 분석
+│   ├── online_order_agent      # 온라인 주문 데이터를 처리
 │   ├── inventory_agent.py      # 재고·유통기한 관리
 │   ├── recipe_agent.py         # 맞춤형 레시피 추천
 │   ├── planner_agent.py        # 주간 식단·쇼핑리스트 생성
