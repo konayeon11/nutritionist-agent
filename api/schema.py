@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
+from core.models import DailyMealPlan # Add this import
+
 class ImageAnalyzeRequest(BaseModel):
     image_b64: str  # base64
 
@@ -20,3 +22,7 @@ class PlanProfile(BaseModel):
 
 class NutritionEstimateRequest(BaseModel):
     recipe: Dict[str, Any]
+
+class NutritionAnalysisRequest(BaseModel):
+    meal_plan: Optional[DailyMealPlan] = None
+    food_log: Optional[List[Dict[str, Any]]] = None # e.g., [{"name": "apple", "quantity": 1, "unit": "ea"}]

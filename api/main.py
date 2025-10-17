@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body, HTTPException
 from .schema import (
     ImageAnalyzeRequest, InventoryChange, RecipeSuggestRequest,
-    PlanProfile, NutritionEstimateRequest
+    PlanProfile, NutritionEstimateRequest, NutritionAnalysisRequest
 )
+from api.planner import router as planner_router
+from agents.nutrition_agent import analyze_nutrition_report
+from core.models import NutritionAnalysisReport
 
 app = FastAPI(title="AI Nutritionist Agent API", version="0.1.0")
+
+app.include_router(planner_router, prefix="/plan", tags=["plan"])
 
 @app.get("/health")
 def health():
@@ -42,16 +47,28 @@ def suggest_recipes(payload: RecipeSuggestRequest):
     """
     return {"detail": "implement in feat/*"}
 
-@app.post("/plan/weekly")
-def plan_week(payload: PlanProfile):
-    """
-    Output: {"week": [{"day": "Mon", "meals": [...]}, ...]}
-    """
-    return {"detail": "implement in feat/*"}
-
 @app.post("/nutrition/estimate")
 def estimate_nutrition(payload: NutritionEstimateRequest):
     """
     Output: {"kcal": float, "protein": float, "carbs": float, "fat": float}
     """
     return {"detail": "implement in feat/*"}
+
+@app.post("/nutrition/analyze", response_model=NutritionAnalysisReport, tags=["nutrition"])
+def analyze_nutrition(request: NutritionAnalysisRequest = Body(...)):
+    """
+    식단표 또는 음식 기록을 바탕으로 영양 분석 리포트를 생성합니다.
+    """
+    # meal_plan과 food_log 중 하나는 반드시 제공되어야 함
+    if not request.meal_plan and not request.food_log:
+        raise HTTPException(status_code=400, detail="meal_plan 또는 food_log 중 하나는 반드시 제공되어야 합니다.")
+
+    # LLM에 전달할 입력 데이터 준비
+    input_data = {}
+    if request.meal_plan:
+        input_data["meal_plan"] = request.meal_plan.dict()
+    if request.food_log:
+        input_data["food_log"] = request.food_log
+
+    report = analyze_nutrition_report(input_data)
+    return report

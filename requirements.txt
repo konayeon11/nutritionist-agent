@@ -1,9 +1,10 @@
-<<<<<<< HEAD
+# FastAPI 서버 및 기본 구성
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.7.0
 python-multipart>=0.0.9
-=======
+python-dotenv>=1.1.1
+
+# Core dependencies
 annotated-types==0.7.0
 anyio==4.11.0
 certifi==2025.10.5
@@ -44,4 +45,3 @@ typing_extensions==4.15.0
 urllib3==2.5.0
 xxhash==3.6.0
 zstandard==0.25.0
->>>>>>> you
