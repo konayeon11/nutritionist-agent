@@ -22,21 +22,21 @@
   "아보카도": {
     "quantity": "2",
     "added_date": "2025-10-17",
-    "expiry_date": "2025-10-20"
-  },
-  "살사 소스": {
-    "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-24"
+    "expiry_date": "2025-10-22"
   },
   "치즈": {
     "quantity": "1",
     "added_date": "2025-10-17",
     "expiry_date": "2025-11-07"
   },
+  "살사 소스": {
+    "quantity": "1",
+    "added_date": "2025-10-17",
+    "expiry_date": "2025-10-24"
+  },
   "치폴레 소스": {
     "quantity": "1",
     "added_date": "2025-10-17",
-    "expiry_date": "2025-11-16"
+    "expiry_date": "2025-10-24"
   }
 }

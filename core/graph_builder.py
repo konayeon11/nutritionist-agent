@@ -1,16 +1,4 @@
-<<<<<<< HEAD
-"""
-GraphBuilder: 에이전트 흐름 정의 (인터페이스만)
-"""
-from typing import Dict, Any
 
-def build_graph(config: Dict[str, Any]) -> Any:
-    """
-    Input: {"nodes":[...], "edges":[...]} (TBD)
-    Output: graph object / callable
-    """
-    raise NotImplementedError
-=======
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, List, Dict
 
@@ -83,4 +71,3 @@ if __name__ == '__main__':
     print("\n--- 전체 워크플로우 실행 완료 ---")
     import pprint
     pprint.pprint(final_state['inventory'])
->>>>>>> you
