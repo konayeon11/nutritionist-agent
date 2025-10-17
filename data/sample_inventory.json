@@ -1,7 +1,0 @@
-{
-  "items": [
-    {"name": "egg", "quantity": 6, "unit": "pcs"},
-    {"name": "spinach", "quantity": 200, "unit": "g"},
-    {"name": "milk", "quantity": 500, "unit": "ml"}
-  ]
-}
