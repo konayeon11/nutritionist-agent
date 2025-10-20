@@ -19,6 +19,13 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 import os, re, json, unicodedata, logging, hashlib
 
+# --- .env 로드 ---
+from dotenv import load_dotenv
+load_dotenv()
+
+# --- DB Import ---
+from core.database import DatabaseManager
+
 # ------------------- 로깅 -------------------
 logger = logging.getLogger("recipe_agent")
 if not logger.handlers:
@@ -89,7 +96,7 @@ def _score_recipe(rec: RecipeItem, inventory: List[str], constraints: Dict[str, 
         return None
     
     health_bonus = 0
-    diet = (constraints.get("diet") or "").lower()
+    diet = (constraints.get("dietary_goals") or "").lower()
     if diet == "low_sodium" and rec.nutrition and rec.nutrition.sodium_mg is not None and rec.nutrition.sodium_mg <= 700:
         health_bonus += 8
         
@@ -109,29 +116,22 @@ def _openai_client(constraints: Dict[str, Any]):
 
 def _parse_json_safe(txt: str) -> Any:
     txt = (txt or "").strip()
-    match = re.search(r"\{.*\}|\[.*\]", txt, re.DOTALL)
+    match = re.search(r"\{.*\}|.*\[.*\]", txt, re.DOTALL)
     if not match: return None
     try: return json.loads(match.group(0))
     except json.JSONDecodeError: return None
-
-def _ensure_test_profile(constraints: Dict[str, Any]) -> Dict[str, Any]:
-    c = dict(constraints or {})
-    if not any(c.get(k) for k in ["allergies", "dislikes", "diet", "preferred_cuisines"]):
-        c.update({"allergies": ["새우"], "dislikes": ["고수"], "diet": "low_sodium", "preferred_cuisines": ["korean", "japanese"], "health_context": {"hypertension": True}})
-    return c
 
 # ------------------- LLM 스키마/프롬프트/호출 -------------------
 def _schema_spec() -> Dict[str, Any]:
     return {"type":"object", "required":["recipes"], "properties":{"recipes":{"type":"array", "items":RecipeItem.model_json_schema()}}}
 
 def _synthesize_prompt(inv: List[str], constraints: Dict[str, Any], need: int) -> Dict[str, Any]:
-    c = _ensure_test_profile(constraints)
     system = ("당신은 사용자의 재료와 요구사항에 맞춰 창의적인 레시피를 생성하는 전문 셰프입니다. "
               "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다.")
     user = {
         "output_contract": _schema_spec(),
         "instruction": f"다음 조건에 맞는 레시피 {need}개를 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.",
-        "context": {"inventory": inv, "constraints": c}
+        "context": {"inventory": inv, "constraints": constraints}
     }
     return {"system": system, "user": user}
 
@@ -147,8 +147,7 @@ def _openai_call(system: str, user_payload: Dict[str, Any], constraints: Dict[st
             response_format={"type": "json_object"}
         )
         return resp.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenAI call failed: {e}"); return None
+    except Exception as e: logger.error(f"OpenAI call failed: {e}"); return None
 
 def _openai_generate_recipes(inventory: List[str], constraints: Dict[str, Any], need: int) -> List[RecipeItem]:
     p = _synthesize_prompt(inventory, constraints, need)
@@ -167,13 +166,12 @@ def _openai_generate_recipes(inventory: List[str], constraints: Dict[str, Any], 
 
 # ------------------- 마케팅 카피 / UI 카드 생성 -------------------
 def _marketing_headline(rec: RecipeItem, uses: List[str], constraints: Dict[str, Any]) -> str:
-    c = _ensure_test_profile(constraints)
     focus = []
     if uses: focus.append(f"냉장고 속 {', '.join(uses[:2])} 활용")
-    if c.get("time_max"): focus.append(f"{c.get('time_max')}분 완성")
-    if c.get("diet") == "low_sodium": focus.append("건강한 저염식")
+    if constraints.get("time_max"): focus.append(f"{constraints.get('time_max')}분 완성")
+    if constraints.get("dietary_goals") == "low_sodium": focus.append("건강한 저염식")
     if not focus: focus.append("오늘의 특별 메뉴")
-    return f"{' · '.join(focus)}: 「{rec.title}」"
+    return f"{ ' · '.join(focus)}: 「{rec.title}」"
 
 def _build_customer_card(rec: RecipeItem, uses: List[str], missing: List[str], constraints: Dict[str, Any]) -> str:
     lines = [f"• 한 줄 요약: {_marketing_headline(rec, uses, constraints)}"]
@@ -189,15 +187,23 @@ def _build_customer_card(rec: RecipeItem, uses: List[str], missing: List[str], c
 
 # ------------------- 공개 인터페이스 -------------------
 def suggest_recipes(ingredients: List[str], constraints: Dict[str, Any]) -> List[Dict[str, Any]]:
-    target = int(constraints.get("target_count", 3))
+    # --- DB 연동: 사용자 설정 로드 ---
+    db_manager = DatabaseManager()
+    user_prefs = db_manager.get_user_preferences("default_user")
+    db_manager.close()
+
+    # DB 설정과 API 요청 제약을 병합 (API 요청이 우선)
+    final_constraints = {**user_prefs, **constraints}
+    logger.info(f"Final constraints for recipe generation: {final_constraints}")
+
+    target = int(final_constraints.get("target_count", 3))
     inv_norm = [_normalize(x) for x in ingredients if _normalize(x)]
     
-    # ✨ 웹 검색 없이 바로 레시피를 생성합니다. ✨
-    generated_recipes = _openai_generate_recipes(inv_norm, constraints, need=target * 2)
+    generated_recipes = _openai_generate_recipes(inv_norm, final_constraints, need=target * 2)
     
     cands: List[_Candidate] = []
     for r in generated_recipes:
-        cand = _score_recipe(r, inv_norm, constraints)
+        cand = _score_recipe(r, inv_norm, final_constraints)
         if cand: cands.append(cand)
 
     cands.sort(key=lambda c: (c.missing_count, -c.matched_count, -c.score))
@@ -212,7 +218,7 @@ def suggest_recipes(ingredients: List[str], constraints: Dict[str, Any]) -> List
         rec_dict["id"] = _stable_id(c.rec.title, *c.rec.ingredients)
         rec_dict["uses"] = c.uses
         rec_dict["missing"] = c.missing
-        rec_dict["customer_card"] = _build_customer_card(c.rec, c.uses, c.missing, constraints)
+        rec_dict["customer_card"] = _build_customer_card(c.rec, c.uses, c.missing, final_constraints)
         results.append(rec_dict)
         
         if len(results) >= target:
@@ -223,8 +229,30 @@ def suggest_recipes(ingredients: List[str], constraints: Dict[str, Any]) -> List
 
 # ------------------- CLI 테스트 -------------------
 if __name__ == "__main__":
-    inv = ["돼지고기", "김치", "양파", "두부", "계란"]
-    constraints = {"target_count": 2, "max_missing": 2, "diet": "low_sodium"}
+    inv = ["돼지고기", "김치", "양파", "두부", "계란", "오이", "새우"]
+    # 제약조건은 이제 DB에서 불러옵니다.
+    constraints = {"target_count": 2, "max_missing": 2}
+    
+    print("-" * 20)
+    print(f"테스트 인벤토리: {inv}")
+    print("DB에서 불러올 사용자 설정: 알레르기=['새우'], 기피=['오이'], 식단='저탄수화물'")
+    print("-" * 20)
+
     recipes = suggest_recipes(inv, constraints)
     print(json.dumps(recipes, indent=2, ensure_ascii=False))
 
+    print("\n" + "-" * 20)
+    print("결과 검증")
+    print("-" * 20)
+    found_issue = False
+    for recipe in recipes:
+        for ingredient in recipe['ingredients']:
+            if '새우' in ingredient:
+                logger.error(f"검증 실패: 레시피 '{recipe['title']}'에 알레르기 항목인 '새우'가 포함되었습니다.")
+                found_issue = True
+            if '오이' in ingredient:
+                logger.error(f"검증 실패: 레시피 '{recipe['title']}'에 기피 재료인 '오이'가 포함되었습니다.")
+                found_issue = True
+    
+    if not found_issue:
+        logger.info("검증 성공: 추천된 모든 레시피가 사용자의 알레르기 및 기피 재료 설정을 준수했습니다.")
