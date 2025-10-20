@@ -1,42 +1,42 @@
 {
   "토르티야": {
     "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-24"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-10-27"
   },
   "할라피뇨": {
     "quantity": "2",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-31"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-11-03"
   },
   "라임": {
     "quantity": "3",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-31"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-11-03"
   },
   "옥수수": {
     "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-22"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-10-25"
   },
   "아보카도": {
     "quantity": "2",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-22"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-10-23"
   },
   "치즈": {
     "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-11-07"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-11-10"
   },
-  "살사 소스": {
+  "살사": {
     "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-24"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-10-25"
   },
   "치폴레 소스": {
     "quantity": "1",
-    "added_date": "2025-10-17",
-    "expiry_date": "2025-10-24"
+    "added_date": "2025-10-20",
+    "expiry_date": "2025-11-19"
   }
 }

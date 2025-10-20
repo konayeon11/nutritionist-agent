@@ -1,109 +1,113 @@
-"""
-PlannerAgent: 사용자가 선택한 레시피를 바탕으로 일일 식단을 계획하고,
-부족한 재료로 쇼핑 리스트를 생성합니다.
-"""
 import os
-from typing import List
+import json
+from typing import List, Tuple, Dict, Any
 from openai import OpenAI
 from dotenv import load_dotenv
+from urllib.parse import quote
 
-from core.models import Recipe, DailyMealPlan, ShoppingList, ShoppingItem, Ingredient
+# core/models.py 파일이 있다는 가정 하에 모델들을 가져옵니다.
+from core.models import DailyMealPlan, ShoppingList, ShoppingItem
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
 def create_daily_plan_and_shopping_list(
-    user_selected_recipes: List[Recipe],
-    current_inventory: List[Ingredient]
-) -> (DailyMealPlan, ShoppingList):
+    user_selected_recipes: List[Dict],
+    current_inventory: Dict
+) -> Tuple[DailyMealPlan, ShoppingList]:
     """
     사용자가 선택한 레시피와 현재 재고를 바탕으로 일일 식단과 쇼핑 리스트를 생성합니다.
-
-    Args:
-        user_selected_recipes (List[Recipe]): 사용자가 선택한 레시피 목록
-        current_inventory (List[Ingredient]): 현재 재고 목록
-
-    Returns:
-        (DailyMealPlan, ShoppingList): 생성된 일일 식단과 쇼핑 리스트
     """
     # 1. 식단 생성
-    # 현재는 간단하게 아침, 점심, 저녁으로 할당합니다.
-    # 추후, 사용자가 식사 시간을 선택할 수 있도록 확장할 수 있습니다.
     meal_plan = DailyMealPlan()
     if len(user_selected_recipes) > 0:
-        meal_plan.breakfast = user_selected_recipes[0].name
+        meal_plan.breakfast = user_selected_recipes[0].get('title')
     if len(user_selected_recipes) > 1:
-        meal_plan.lunch = user_selected_recipes[1].name
+        meal_plan.lunch = user_selected_recipes[1].get('title')
     if len(user_selected_recipes) > 2:
-        meal_plan.dinner = user_selected_recipes[2].name
+        meal_plan.dinner = user_selected_recipes[2].get('title')
 
     # 2. 쇼핑 리스트 생성
     shopping_list = ShoppingList(items=[])
     
-    # 필요한 모든 재료 집계
-    required_ingredients = {}
+    missing_ingredients = set()
     for recipe in user_selected_recipes:
-        for ingredient in recipe.ingredients:
-            if ingredient.name in required_ingredients:
-                required_ingredients[ingredient.name] += ingredient.quantity
-            else:
-                required_ingredients[ingredient.name] = ingredient.quantity
-
-    # 현재 재고와 비교하여 부족한 재료 파악
-    missing_ingredients = {}
-    inventory_dict = {item.name: item.quantity for item in current_inventory}
+        for item in recipe.get("missing", []):
+            missing_ingredients.add(item)
     
-    for name, required_qty in required_ingredients.items():
-        if name not in inventory_dict or inventory_dict[name] < required_qty:
-            missing_qty = required_qty - (inventory_dict.get(name, 0))
-            missing_ingredients[name] = missing_qty
+    print(f"Planner Agent: 부족한 재료 목록: {list(missing_ingredients)}")
 
     # 부족한 재료로 쇼핑 리스트 생성
-    for name, qty in missing_ingredients.items():
-        # LLM을 사용하여 상품 URL 검색
-        url = get_product_url_from_llm(name)
+    for name in missing_ingredients:
+        # ✨ 수정된 URL 생성 함수를 호출합니다 ✨
+        url = _generate_shopping_url(name)
         shopping_list.items.append(
-            ShoppingItem(name=name, quantity=str(qty), url=url)
+            ShoppingItem(name=name, quantity="필요한 만큼", url=url)
         )
 
     return meal_plan, shopping_list
 
 
-def get_product_url_from_llm(item_name: str) -> str:
+# --- ✨ URL 생성 로직 전체 수정 ✨ ---
+def _generate_shopping_url(item_name: str) -> str:
     """
-    Uses the OpenAI API to generate a Coupang search URL for the given item name.
-    Includes a fallback to manual URL generation if the API fails or returns an invalid URL.
+    LLM을 사용해 최적의 '검색 키워드'를 찾고, 파이썬으로 안정적인 URL을 생성합니다.
     """
     api_key = os.getenv("OPENAI_API_KEY")
+    search_keyword = "" # 검색 키워드를 담을 변수
+
     if not api_key:
-        # Fallback if API key is not set
-        from urllib.parse import quote
-        return f"https://www.coupang.com/np/search?q={quote(item_name)}"
+        # API 키가 없으면, 직접 인코딩하여 기본 URL을 반환합니다.
+        search_keyword = item_name.split(",")[0].split("(")[0].strip()
+    else:
+        client = OpenAI(api_key=api_key)
+        # 프롬프트: URL 대신 '검색 키워드'를 요청하도록 변경
+        prompt = f"'{item_name}'을 쿠팡 같은 온라인 쇼핑몰에서 검색하기 위한 가장 좋은 검색 키워드 하나만 알려줘. 다른 설명은 모두 빼고 오직 검색 키워드만 응답해줘. (예: '돼지고기 목살 300g' -> '돼지고기 목살')"
 
-    client = OpenAI(api_key=api_key)
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts the best search keyword from a given product description."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0,
+                max_tokens=50
+            )
+            # ✨ LLM 응답에서 URL이나 다른 텍스트가 섞여도 키워드만 남도록 처리 ✨
+            llm_response = response.choices[0].message.content.strip().replace('"', '')
+            # 만약 응답에 공백이 있다면 첫 단어만 키워드로 간주 (더 안정적)
+            search_keyword = llm_response.split(" ")[0]
 
-    prompt = f"'{item_name}'에 대한 쿠팡(Coupang) 검색 URL을 만들어줘. 다른 설명 없이 URL만 응답해줘."
+        except Exception as e:
+            # API 오류 발생 시, 직접 키워드를 추출하는 fallback 로직
+            print(f"LLM 키워드 추출 중 오류 발생: {e}. 기본 키워드를 사용합니다.")
+            search_keyword = item_name.split(",")[0].split("(")[0].strip()
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a bot that creates a valid Coupang search URL for a given product name. You only return a single URL and nothing else."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0,
-            max_tokens=200
-        )
-        raw_response = response.choices[0].message.content.strip()
+    # ✨ 최종 URL 생성은 항상 파이썬이 담당 ✨
+    # 파이썬의 quote 함수를 사용하여 안정적으로 URL을 생성합니다.
+    encoded_keyword = quote(search_keyword)
+    print(f"'{item_name}' -> 검색 키워드: '{search_keyword}' -> URL 생성")
+    return f"https://www.coupang.com/np/search?q={encoded_keyword}"
 
-        # More flexible check for a valid Coupang search URL
-        if raw_response.startswith("https://www.coupang.com/np/search?") and "q=" in raw_response:
-            return raw_response
-        else:
-            # If the LLM fails, fall back to manual URL encoding as a safeguard
-            from urllib.parse import quote
-            return f"https://www.coupang.com/np/search?q={quote(item_name)}"
-    except Exception:
-        # Fallback in case of any API error
-        from urllib.parse import quote
-        return f"https://www.coupang.com/np/search?q={quote(item_name)}"
+
+# --- 단위 테스트 ---
+if __name__ == '__main__':
+    print("Planner Agent 단위 테스트를 시작합니다...")
+    
+    sample_recipes = [
+        {"title": "돼지고기 김치찌개", "missing": ["돼지고기 목살 300g", "두부 반 모"]}
+    ]
+    sample_inventory = {}
+    
+    meal_plan, shopping_list = create_daily_plan_and_shopping_list(sample_recipes, sample_inventory)
+
+    print("\n[생성된 식단 계획]:")
+    print(meal_plan.model_dump_json(indent=2, ensure_ascii=False))
+
+    print("\n[생성된 쇼핑 리스트 (URL 포함)]:")
+    print(shopping_list.model_dump_json(indent=2, ensure_ascii=False))
+    
+    assert "coupang.com" in shopping_list.items[0].url
+    print("\n테스트 성공!")
+
