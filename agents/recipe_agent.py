@@ -127,10 +127,36 @@ def _schema_spec() -> Dict[str, Any]:
 
 def _synthesize_prompt(inv: List[str], constraints: Dict[str, Any], need: int) -> Dict[str, Any]:
     system = ("당신은 사용자의 재료와 요구사항에 맞춰 창의적인 레시피를 생성하는 전문 셰프입니다. "
-              "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다.")
+              "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다. "
+              "레시피의 모든 세부 정보(시간 분할, 알레르기 유발 물질, 필요한 장비, 대체 재료, 보관 및 재가열 방법, 적합성)를 최대한 상세하게 채워주세요.")
+    
+    user_constraints_str = ""
+    if constraints.get("allergies"):
+        user_constraints_str += f" - 알레르기: {', '.join(constraints['allergies'])} (이 재료는 절대 사용하지 마세요.)\n"
+    if constraints.get("preferences", {}).get("dislikes"):
+        user_constraints_str += f" - 기피 재료: {', '.join(constraints['preferences']['dislikes'])} (이 재료는 사용하지 마세요.)\n"
+    if constraints.get("dietary_goals"):
+        user_constraints_str += f" - 식단 목표: {constraints['dietary_goals']}\n"
+    if constraints.get("time_max"):
+        user_constraints_str += f" - 최대 소요 시간: {constraints['time_max']}분 이내\n"
+
     user = {
         "output_contract": _schema_spec(),
-        "instruction": f"다음 조건에 맞는 레시피 {need}개를 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.",
+        "instruction": (f"다음 조건에 맞는 레시피 {need}개를 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.\n"
+                        f"각 레시피에 대해 다음 필드를 상세하게 채워주세요:\n"
+                        f"  - `time_minutes`: 총 소요 시간 (분)\n"
+                        f"  - `difficulty`: 레시피 난이도 (예: 쉬움, 보통, 어려움)\n"
+                        f"  - `tags`: 레시피 관련 태그 목록 (예: ['한식', '간편식'])\n"
+                        f"  - `servings`: 레시피 제공량 (예: 2인분)\n"
+                        f"  - `time_breakdown`: 준비 시간과 요리 시간을 분리하여 (예: {{'prep': 10, 'cook': 20}})\n"
+                        f"  - `nutrition`: 추정 영양 정보 (calories_kcal, protein_g, carbs_g, fat_g, sodium_mg 필드 포함, 없으면 null)\n"
+                        f"  - `allergens`: 레시피에 포함된 주요 알레르기 유발 물질 목록 (없으면 빈 리스트)\n"
+                        f"  - `equipment`: 필요한 주요 조리 도구 목록 (없으면 빈 리스트)\n"
+                        f"  - `substitutions`: 주요 재료에 대한 대체 재료 제안 (예: {{'닭고기': ['돼지고기', '두부']}})\n"
+                        f"  - `storage`: 조리 후 보관 방법 및 기간\n"
+                        f"  - `reheat`: 재가열 방법\n"
+                        f"  - `suitability`: 레시피의 적합성 요약 (summary, health, inventory, time, occasion, skill, tips, warnings 필드 포함)\n"
+                        f"사용자 제약 조건: \n{user_constraints_str if user_constraints_str else '없음'}\n"),
         "context": {"inventory": inv, "constraints": constraints}
     }
     return {"system": system, "user": user}

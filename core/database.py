@@ -122,6 +122,15 @@ class DatabaseManager:
         식사 기록을 추가합니다.
         """
         with self.conn:
+            # 동일한 날짜와 recipe_id를 가진 기록이 이미 있는지 확인
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM meal_history WHERE meal_date = ? AND recipe_id = ?",
+                (meal_date, recipe_id)
+            )
+            if cursor.fetchone()[0] > 0:
+                print(f"경고: {meal_date}에 이미 레시피 '{recipe_title}' ({recipe_id}) 기록이 존재합니다. 중복 기록을 건너뜁니다.")
+                return
+
             self.conn.execute("""
                 INSERT INTO meal_history (meal_date, recipe_id, recipe_title, ingredients)
                 VALUES (?, ?, ?, ?)

@@ -7,7 +7,7 @@ import json
 from fastapi import FastAPI, File, Form, HTTPException
 
 # --- LangGraph 워크플로우와 필요한 에이전트를 가져옵니다 ---
-from core.graph_builder import app as agent_workflow
+from core.graph_builder import app as agent_workflow, image_app # image_app 임포트
 from agents.inventory_agent import InventoryAgent
 
 # --- FastAPI 앱 초기화 ---
@@ -34,18 +34,40 @@ async def analyze_and_suggest(
 
     image_base64 = base64.b64encode(file).decode("utf-8")
     
-    # LangGraph 워크플로우 실행
+    # LangGraph 워크플로우 실행 (vision_node부터 시작)
     initial_state = {
         "image_base64": image_base64,
         "constraints": constraints_dict
     }
-    final_state = agent_workflow.invoke(initial_state)
+    # image_app을 호출하도록 변경
+    final_state = image_app.invoke(initial_state, config={"configurable": {"thread_id": "image_analysis_thread"}})
     
     # 최종 결과에서 필요한 정보만 추출하여 반환
     return {
         "inventory": final_state.get("inventory", {}),
         "recipes": final_state.get("recipes", [])
     }
+
+@app.post("/chat", tags=["챗봇"])
+async def chat_with_agent(message: str):
+    """
+    챗봇 형식으로 AI 에이전트와 대화합니다.
+    사용자 메시지를 받아 적절한 응답을 반환합니다.
+    """
+    initial_state = {"chat_message": message}
+    final_state = agent_workflow.invoke(initial_state)
+    
+    response_data = {
+        "response": final_state.get("response", "요청을 처리할 수 없습니다.")
+    }
+
+    # 'get_recipes' 의도일 경우에만 shopping_list를 포함
+    if final_state.get("intent", {}).get("intent") == "get_recipes":
+        shopping_list_data = final_state.get("shopping_list")
+        if shopping_list_data is not None:
+            response_data["shopping_list"] = shopping_list_data
+
+    return response_data
 
 
 # --- 이하 엔드포인트는 보조 기능 또는 미구현 기능입니다 ---
