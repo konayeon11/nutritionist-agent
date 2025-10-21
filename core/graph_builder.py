@@ -127,9 +127,7 @@ def log_meal_history(state: AgentState) -> dict:
                     print(f"경고: '{recipe_title}' 레시피를 찾을 수 없어 기록하지 못했습니다.")
         
         if logged_count > 0:
-            response_message = f"총 {logged_count}개의 식단이 기록되었습니다. 추천된 레시피는 다음과 같습니다:\n"
-            for recipe in recipes_from_agent:
-                response_message += f"- {recipe.get('title')}\n"
+            response_message = f"총 {logged_count}개의 식단이 기록되었습니다. 아래에서 추천된 레시피를 확인하세요."
             print(response_message)
             return {"response": response_message, "recipes": recipes_from_agent} # recipes도 함께 반환
         else:

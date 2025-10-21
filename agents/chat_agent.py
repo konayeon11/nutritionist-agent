@@ -20,11 +20,11 @@ class ChatAgent:
         prompt = f"""
         당신은 사용자 메시지의 의도를 파악하고 필요한 정보를 JSON 형식으로 추출하는 AI 비서입니다.
         사용자의 메시지를 분석하여 다음 중 하나의 'intent'를 결정하세요:
-        - 'get_recipes': 레시피 추천을 요청하는 경우
-        - 'get_inventory': 현재 재고를 확인하려는 경우
-        - 'add_inventory': 재고를 추가하려는 경우
-        - 'update_preferences': 사용자 선호도를 업데이트하려는 경우
-        - 'general_chat': 위 범주에 속하지 않는 일반적인 대화
+        - 'get_recipes': "레시피 추천", "뭐 해먹지" 와 같은 명시적인 요청이나, "김", "사과, 바나나" 처럼 재료 이름만 입력되는 경우.
+        - 'get_inventory': 현재 재고를 확인하려는 경우.
+        - 'add_inventory': 재고를 추가하려는 경우.
+        - 'update_preferences': 사용자 선호도를 업데이트하려는 경우.
+        - 'general_chat': 위 범주에 속하지 않는 일반적인 대화.
 
         'get_recipes' 의도일 경우, 메시지에서 레시피 추천에 필요한 'ingredients' (리스트)를 추출하세요.
         'add_inventory' 의도일 경우, 메시지에서 추가할 'item_name' (문자열)과 'quantity' (문자열)를 추출하세요.
@@ -37,11 +37,23 @@ class ChatAgent:
         {message}
 
         [출력 예시]
-        {{"intent": "get_recipes", "ingredients": ["닭고기", "양파"]}}
-        {{"intent": "get_inventory"}}
-        {{"intent": "add_inventory", "item_name": "사과", "quantity": "3개"}}
-        {{"intent": "update_preferences", "allergies": ["땅콩"], "dietary_goals": "저염식"}}
-        {{"intent": "general_chat"}}
+        사용자 메시지: 닭고기랑 양파로 만들 수 있는 레시피 추천해줘
+        출력: {{"intent": "get_recipes", "ingredients": ["닭고기", "양파"]}}
+
+        사용자 메시지: 김
+        출력: {{"intent": "get_recipes", "ingredients": ["김"]}}
+
+        사용자 메시지: 내 냉장고에 뭐가 있는지 알려줘
+        출력: {{"intent": "get_inventory"}}
+
+        사용자 메시지: 사과 3개 냉장고에 넣어줘
+        출력: {{"intent": "add_inventory", "item_name": "사과", "quantity": "3개"}}
+
+        사용자 메시지: 나는 새우 알레르기가 있고 저탄수화물 식단을 원해
+        출력: {{"intent": "update_preferences", "allergies": ["새우"], "dietary_goals": "저탄수화물"}}
+
+        사용자 메시지: 안녕, 잘 지내?
+        출력: {{"intent": "general_chat"}}
         """
 
         try:

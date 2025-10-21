@@ -9,15 +9,16 @@ Service-friendly RecipeAgent (GPT-only, Marketing Copy + Clean Output)
 - 🧩 인벤토리 교집합(uses) + STOPWORDS 제외 누락(missing) 계산
 - 🔒 품질 필터: 인벤토리 최소 1개 일치 & 누락 ≤ max_missing
 - 🏁 정렬: 누락 0 → 누락 적음 → 매칭 많음 → 점수
+- 🌐 외부 레시피 검색 기능 추가 (한국 레시피 사이트 크롤링)
 
-의존성: openai, pydantic
+의존성: openai, pydantic, requests, beautifulsoup4
 """
 
 from __future__ import annotations
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
-import os, re, json, unicodedata, logging, hashlib
+import os, re, json, unicodedata, logging, hashlib, time
 
 # --- .env 로드 ---
 from dotenv import load_dotenv
@@ -125,42 +126,6 @@ def _parse_json_safe(txt: str) -> Any:
 def _schema_spec() -> Dict[str, Any]:
     return {"type":"object", "required":["recipes"], "properties":{"recipes":{"type":"array", "items":RecipeItem.model_json_schema()}}}
 
-def _synthesize_prompt(inv: List[str], constraints: Dict[str, Any], need: int) -> Dict[str, Any]:
-    system = ("당신은 사용자의 재료와 요구사항에 맞춰 창의적인 레시피를 생성하는 전문 셰프입니다. "
-              "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다. "
-              "레시피의 모든 세부 정보(시간 분할, 알레르기 유발 물질, 필요한 장비, 대체 재료, 보관 및 재가열 방법, 적합성)를 최대한 상세하게 채워주세요.")
-    
-    user_constraints_str = ""
-    if constraints.get("allergies"):
-        user_constraints_str += f" - 알레르기: {', '.join(constraints['allergies'])} (이 재료는 절대 사용하지 마세요.)\n"
-    if constraints.get("preferences", {}).get("dislikes"):
-        user_constraints_str += f" - 기피 재료: {', '.join(constraints['preferences']['dislikes'])} (이 재료는 사용하지 마세요.)\n"
-    if constraints.get("dietary_goals"):
-        user_constraints_str += f" - 식단 목표: {constraints['dietary_goals']}\n"
-    if constraints.get("time_max"):
-        user_constraints_str += f" - 최대 소요 시간: {constraints['time_max']}분 이내\n"
-
-    user = {
-        "output_contract": _schema_spec(),
-        "instruction": (f"다음 조건에 맞는 레시피 {need}개를 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.\n"
-                        f"각 레시피에 대해 다음 필드를 상세하게 채워주세요:\n"
-                        f"  - `time_minutes`: 총 소요 시간 (분)\n"
-                        f"  - `difficulty`: 레시피 난이도 (예: 쉬움, 보통, 어려움)\n"
-                        f"  - `tags`: 레시피 관련 태그 목록 (예: ['한식', '간편식'])\n"
-                        f"  - `servings`: 레시피 제공량 (예: 2인분)\n"
-                        f"  - `time_breakdown`: 준비 시간과 요리 시간을 분리하여 (예: {{'prep': 10, 'cook': 20}})\n"
-                        f"  - `nutrition`: 추정 영양 정보 (calories_kcal, protein_g, carbs_g, fat_g, sodium_mg 필드 포함, 없으면 null)\n"
-                        f"  - `allergens`: 레시피에 포함된 주요 알레르기 유발 물질 목록 (없으면 빈 리스트)\n"
-                        f"  - `equipment`: 필요한 주요 조리 도구 목록 (없으면 빈 리스트)\n"
-                        f"  - `substitutions`: 주요 재료에 대한 대체 재료 제안 (예: {{'닭고기': ['돼지고기', '두부']}})\n"
-                        f"  - `storage`: 조리 후 보관 방법 및 기간\n"
-                        f"  - `reheat`: 재가열 방법\n"
-                        f"  - `suitability`: 레시피의 적합성 요약 (summary, health, inventory, time, occasion, skill, tips, warnings 필드 포함)\n"
-                        f"사용자 제약 조건: \n{user_constraints_str if user_constraints_str else '없음'}\n"),
-        "context": {"inventory": inv, "constraints": constraints}
-    }
-    return {"system": system, "user": user}
-
 def _openai_call(system: str, user_payload: Dict[str, Any], constraints: Dict[str, Any]):
     client = _openai_client(constraints)
     if not client: return None
@@ -175,16 +140,192 @@ def _openai_call(system: str, user_payload: Dict[str, Any], constraints: Dict[st
         return resp.choices[0].message.content
     except Exception as e: logger.error(f"OpenAI call failed: {e}"); return None
 
+# ------------------- 외부 레시피 검색 (웹 크롤링) -------------------
+def _search_external_recipes(inventory: List[str], constraints: Dict[str, Any], num_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    한국 레시피 사이트에서 레시피 검색 및 크롤링
+    
+    지원 사이트:
+    - 만개의레시피 (10000recipe.com)
+    
+    Args:
+        inventory: 사용자의 재료 목록
+        constraints: 검색 제약 조건
+        num_results: 최대 반환 결과 수
+    
+    Returns:
+        검색된 레시피 정보 리스트 (title, url, snippet 포함)
+    """
+    logger.info(f"외부 레시피 검색 시작 (재료: {len(inventory)}개)")
+    
+    if not inventory:
+        logger.warning("재료 목록이 비어있어 검색을 건너뜁니다.")
+        return []
+    
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.warning("requests 또는 beautifulsoup4가 설치되지 않았습니다. pip install requests beautifulsoup4")
+        return []
+    
+    results = []
+    
+    # 상위 3개 재료로 검색 쿼리 구성
+    search_query = " ".join(inventory[:3])
+    logger.info(f"검색 쿼리: '{search_query}'")
+    
+    try:
+        # 만개의레시피 검색
+        search_url = f"https://www.10000recipe.com/recipe/list.html"
+        params = {
+            "q": search_query,
+            "order": "reco"  # 추천순
+        }
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        response = requests.get(search_url, params=params, headers=headers, timeout=5)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 레시피 카드 찾기 (사이트 구조에 따라 셀렉터 조정 필요)
+        recipe_items = soup.select('.common_sp_list_li')[:num_results]
+        
+        for item in recipe_items:
+            try:
+                # 제목 추출
+                title_elem = item.select_one('.common_sp_caption_tit')
+                if not title_elem:
+                    continue
+                title = title_elem.get_text(strip=True)
+                
+                # URL 추출
+                link_elem = item.select_one('a')
+                if not link_elem or not link_elem.get('href'):
+                    continue
+                url = link_elem['href']
+                if not url.startswith('http'):
+                    url = f"https://www.10000recipe.com{url}"
+                
+                # 간단한 설명 추출
+                desc_elem = item.select_one('.common_sp_caption_rv_cont')
+                snippet = desc_elem.get_text(strip=True) if desc_elem else "레시피 설명이 없습니다."
+                
+                results.append({
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet[:200]  # 최대 200자
+                })
+                
+                logger.info(f"레시피 발견: {title}")
+                
+            except Exception as e:
+                logger.warning(f"레시피 항목 파싱 실패: {e}")
+                continue
+        
+        if not results:
+            logger.info("검색 결과를 찾지 못했습니다. LLM이 창의적으로 레시피를 생성합니다.")
+        else:
+            logger.info(f"총 {len(results)}개의 레시피를 찾았습니다.")
+        
+    except requests.exceptions.Timeout:
+        logger.warning("레시피 검색 타임아웃. LLM 생성으로 대체합니다.")
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"레시피 검색 실패: {e}. LLM 생성으로 대체합니다.")
+    except Exception as e:
+        logger.error(f"예상치 못한 검색 오류: {e}")
+    
+    # 검색 결과가 없거나 실패한 경우 빈 리스트 반환 (LLM이 생성하도록)
+    return results
+
+# ------------------- OpenAI 레시피 생성 -------------------
 def _openai_generate_recipes(inventory: List[str], constraints: Dict[str, Any], need: int) -> List[RecipeItem]:
-    p = _synthesize_prompt(inventory, constraints, need)
-    raw = _openai_call(p["system"], p["user"], constraints)
+    """
+    OpenAI를 사용하여 레시피 생성 또는 외부 검색 결과를 기반으로 추출
+    
+    Args:
+        inventory: 사용자의 재료 목록
+        constraints: 생성 제약 조건 (알레르기, 선호도 등)
+        need: 필요한 레시피 수
+    
+    Returns:
+        생성된 레시피 리스트
+    """
+    # 1. 외부 레시피 검색
+    external_results = _search_external_recipes(inventory, constraints, num_results=5)
+    
+    # 2. LLM 프롬프트 구성 (검색 결과 포함)
+    user_constraints_str = ""
+    if constraints.get("allergies"):
+        user_constraints_str += f" - 알레르기: {', '.join(constraints['allergies'])} (이 재료는 절대 사용하지 마세요.)\n"
+    if constraints.get("preferences", {}).get("dislikes"):
+        user_constraints_str += f" - 기피 재료: {', '.join(constraints['preferences']['dislikes'])} (이 재료는 사용하지 마세요.)\n"
+    if constraints.get("dietary_goals"):
+        user_constraints_str += f" - 식단 목표: {constraints['dietary_goals']}\n"
+    if constraints.get("time_max"):
+        user_constraints_str += f" - 최대 소요 시간: {constraints['time_max']}분 이내\n"
+
+    external_results_str = ""
+    if external_results:
+        external_results_str = "\n\n[외부 레시피 검색 결과 (참고용)]\n"
+        for i, res in enumerate(external_results):
+            external_results_str += f"--- 결과 {i+1} ---\n"
+            external_results_str += f"제목: {res.get('title', 'N/A')}\n"
+            external_results_str += f"URL: {res.get('url', 'N/A')}\n"
+            external_results_str += f"요약: {res.get('snippet', 'N/A')}\n\n"
+    
+    if external_results:
+        # 외부 검색 결과가 있을 경우, 추출에 더 집중하는 시스템 프롬프트
+        system = ("당신은 사용자의 재료와 요구사항에 맞춰 외부 검색 결과에서 레시피를 추출하고 요약하는 전문 셰프입니다. "
+                  "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다. "
+                  "**제공된 외부 검색 결과를 바탕으로 레시피를 추출하고 요약하여 제공된 스키마에 맞춰주세요.** "
+                  "**원본 레시피의 URL을 `source.url` 필드에 반드시 포함해주세요.** `source.name`은 원본 레시피의 제목 또는 URL의 도메인을 사용하세요. "
+                  "만약 검색 결과에서 적절한 레시피를 찾을 수 없거나, 사용자 제약 조건에 맞는 레시피를 추출할 수 없다면, 그때 창의적으로 레시피를 생성해주세요.")
+        instruction_prefix = f"다음 외부 검색 결과를 참고하여 조건에 맞는 레시피 {need}개를 추출하거나 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.\n"
+    else:
+        # 외부 검색 결과가 없을 경우, 창의적 생성에 집중하는 시스템 프롬프트
+        system = ("당신은 사용자의 재료와 요구사항에 맞춰 창의적인 레시피를 생성하는 전문 셰프입니다. "
+                  "모든 텍스트는 한국어로, 최종 결과는 JSON 형식으로만 응답해야 합니다.")
+        instruction_prefix = f"다음 조건에 맞는 레시피 {need}개를 생성해주세요. JSON 외의 텍스트는 절대 포함하지 마세요.\n"
+
+    user = {
+        "output_contract": _schema_spec(),
+        "instruction": (instruction_prefix +
+                        f"각 레시피에 대해 다음 필드를 상세하게 채워주세요:\n"
+                        f"  - `time_minutes`: 총 소요 시간 (분)\n"
+                        f"  - `difficulty`: 레시피 난이도 (예: 쉬움, 보통, 어려움)\n"
+                        f"  - `tags`: 레시피 관련 태그 목록 (예: ['한식', '간편식'])\n"
+                        f"  - `servings`: 레시피 제공량 (예: 2인분)\n"
+                        f"  - `time_breakdown`: 준비 시간과 요리 시간을 분리하여 (예: {{'prep': 10, 'cook': 20}})\n"
+                        f"  - `nutrition`: 추정 영양 정보 (calories_kcal, protein_g, carbs_g, fat_g, sodium_mg 필드 포함, 없으면 null)\n"
+                        f"  - `allergens`: 레시피에 포함된 주요 알레르기 유발 물질 목록 (없으면 빈 리스트)\n"
+                        f"  - `equipment`: 필요한 주요 조리 도구 목록 (없으면 빈 리스트)\n"
+                        f"  - `substitutions`: 주요 재료에 대한 대체 재료 제안 (예: {{'닭고기': ['돼지고기', '두부']}})\n"
+                        f"  - `storage`: 조리 후 보관 방법 및 기간\n"
+                        f"  - `reheat`: 재가열 방법\n"
+                        f"  - `suitability`: 레시피의 적합성 요약 (summary, health, inventory, time, occasion, skill, tips, warnings 필드 포함)\n"
+                        f"사용자 제약 조건: \n{user_constraints_str if user_constraints_str else '없음'}\n"
+                        f"{external_results_str}"
+                        ),
+        "context": {"inventory": inventory, "constraints": constraints}
+    }
+    
+    raw = _openai_call(system, user, constraints)
     data = _parse_json_safe(raw) if raw else None
     items = (data or {}).get("recipes", [])
     out: List[RecipeItem] = []
     for r in items:
         try:
-            r["source"] = {"name": "AI 생성 레시피"}
-            out.append(RecipeItem(**r))
+            # 검색 결과에서 추출된 레시피인 경우 URL을 포함
+            if r.get("source", {}).get("url"):
+                out.append(RecipeItem(**r))
+            else:
+                r["source"] = {"name": "AI 생성 레시피"}
+                out.append(RecipeItem(**r))
         except Exception as e:
             logger.warning(f"Failed to parse a generated recipe: {e}")
             continue
@@ -213,6 +354,16 @@ def _build_customer_card(rec: RecipeItem, uses: List[str], missing: List[str], c
 
 # ------------------- 공개 인터페이스 -------------------
 def suggest_recipes(ingredients: List[str], constraints: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    사용자의 재료와 제약 조건에 맞는 레시피를 추천합니다.
+    
+    Args:
+        ingredients: 사용자가 보유한 재료 목록
+        constraints: 추천 제약 조건 (알레르기, 선호도, 식단 목표 등)
+    
+    Returns:
+        추천 레시피 목록 (JSON 직렬화 가능)
+    """
     # --- DB 연동: 사용자 설정 로드 ---
     db_manager = DatabaseManager()
     user_prefs = db_manager.get_user_preferences("default_user")
