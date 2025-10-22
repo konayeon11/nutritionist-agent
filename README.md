@@ -1,137 +1,251 @@
-# ai-nutritionist-agent (skeleton)
+# 미리 (MIRI) - AI 영양사
 
-협업용 기본 뼈대만 포함합니다. 구현 코드는 각자 feat/* 브랜치에서 진행 후 PR로 dev에 병합합니다.
+**Meal & Intelligence for Real-life Integration**
 
-## 구조
-```plaintext
-📦 ai-nutritionist-agent
+당신의 식탁을 미리 준비하는 AI 영양사 서비스입니다.
+
+---
+
+## 🎯 주요 기능
+
+### 🍳 냉장고 스캔 및 재료 관리
+- 냉장고 사진을 업로드하면 AI가 자동으로 재료 인식
+- 유통기한 자동 계산 및 관리
+- 재료별 적절한 단위 자동 부여 (개, 팩, g, ml 등)
+
+### 💬 AI 챗봇 레시피 추천
+- 자연어로 대화하며 레시피 검색
+- "감자전 만들고 싶어", "고기 요리 추천해줘" 등 특정 요리명 인식
+- 냉장고 재료 기반 맞춤 레시피 제안
+
+### 📋 스마트 레시피 검색
+- 만개의레시피 API 연동
+- LLM 기반 레시피 생성
+- 재료 매칭률 및 영양 정보 표시
+
+### 🎮 퀘스트 & 레벨 시스템
+- 일일/주간 퀘스트 완료로 XP 획득
+- 레벨업을 통한 게이미피케이션
+
+### 👤 개인화 프로필
+- 건강 목표, 식단 선호도 설정
+- 로컬 저장으로 개인정보 보호
+
+---
+
+## 🛠️ 기술 스택
+
+### 백엔드
+- **LangGraph**: 멀티 에이전트 워크플로우 오케스트레이션
+- **LangChain**: LLM 체이닝 및 프롬프트 관리
+- **FastAPI**: RESTful API 서버
+- **OpenAI GPT-4o**: 이미지 분석, 레시피 생성, 챗봇
+- **SQLite**: 로컬 데이터베이스
+- **BeautifulSoup4**: 웹 스크래핑
+
+### 프론트엔드
+- **Vue 3**: Composition API
+- **Vite**: 빌드 도구
+- **localStorage**: 클라이언트 데이터 저장
+
+---
+
+## 📁 프로젝트 구조
+
+```
+nutritionist-agent/
+├── agents/                      # AI 에이전트 모듈
+│   ├── chat_agent.py           # 챗봇 인텐트 감지
+│   ├── recipe_agent.py         # 레시피 검색/생성
+│   ├── inventory_agent.py      # 냉장고 재고 관리
+│   ├── image_agent.py          # 이미지 분석
+│   └── quest_agent.py          # 퀘스트 시스템
 │
-├── agents/                     # 각 기능별 AI Agent 모듈
-│   ├── __init__.py
-<<<<<<< HEAD
-│   ├── vision_agent.py         # 냉장고 이미지 분석
-│   ├── online_order_agent      # 온라인 주문 데이터를 처리
-=======
-│   ├── vision_agent.py         # 냉장고/영수증 이미지 분석
->>>>>>> you
-│   ├── inventory_agent.py      # 재고·유통기한 관리
-│   ├── recipe_agent.py         # 맞춤형 레시피 추천
-│   ├── planner_agent.py        # 주간 식단·쇼핑리스트 생성
-│   └── nutrition_agent.py      # 영양분 분석 및 피드백
+├── core/                       # 핵심 로직
+│   ├── graph_builder.py        # LangGraph 워크플로우
+│   └── database.py             # SQLite 데이터베이스
 │
-├── core/                       # LangGraph / Memory / Utils 등 핵심 로직
-│   ├── __init__.py
-│   ├── graph_builder.py        # 멀티에이전트 플로우 정의
-│   ├── memory_manager.py       # 세션·장기 기억 관리
-│   └── utils.py                # 공용 유틸 함수
+├── api/                        # FastAPI 서버
+│   └── main.py                 # API 엔드포인트
 │
-├── api/                        # FastAPI 기반 서버 엔트리포인트
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI 엔트리 포인트
-│   └── schema.py               # Pydantic 데이터 모델 정의
+├── frontend/                   # Vue.js 프론트엔드
+│   ├── src/App.vue
+│   ├── public/miri-logo.png
+│   └── index.html
 │
-├── data/                       # 샘플 데이터 / 리소스
-│   └── sample_inventory.json
+├── docs/                       # 문서
+│   ├── CHANGELOG.md            # 변경 이력
+│   ├── FEATURES.md             # 기능 상세 설명
+│   ├── SETUP.md                # 설치 가이드
+│   └── database_design.md      # DB 설계
 │
-├── tests/                      # 단위 테스트 코드
-│   ├── test_agents.py
-│   ├── test_api.py
-│   └── test_memory.py
-│
-├── README.md                   # 프로젝트 개요 및 실행 가이드
-├── requirements.txt             # 패키지 의존성 목록
-└── .gitignore                   # 캐시·환경파일 제외 설정
+└── data/                       # 데이터 저장소
+    └── nutritionist.db         # SQLite DB
 ```
 
+---
 
-## 빠른 실행 (개발용)
+## 🚀 빠른 시작
+
+### 1. 환경 설정
+
+#### Python 가상환경
+```bash
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+```
+
+#### 패키지 설치
+```bash
 pip install -r requirements.txt
-uvicorn api.main:app --reload
+cd frontend && npm install
+```
 
-## 브랜치 전략
-- main: 배포/안정
-- dev: 통합 개발
-- feat/*: 개인 기능 브랜치 → PR → dev
-<<<<<<< HEAD
+#### 환경변수 설정
+`.env` 파일 생성:
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+```
 
-# 🍳 RecipeAgent — 인벤토리 기반 맞춤 레시피 추천
+### 2. 서버 실행
 
-냉장고 속 재료와 사용자 제약조건을 바탕으로, 신뢰 가능한 출처(있다면 URL 포함) 또는 합성(synthetic) 레시피를 한국어로 추천합니다.  
-기본 양념(물, 소금, 간장, 후추, 식용유 등)은 누락 재료에서 자동 제외됩니다.
+#### 백엔드 (FastAPI)
+```bash
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-──────────────────────────────
-✨ 주요 기능
-──────────────────────────────
-- ✅ 알레르기 / 기피 식품 자동 필터링
-- ✅ 인벤토리 교집합(uses) + 누락(missing) 계산
-- ✅ 식단(diet), 건강 목표, 시간 제약 반영
-- ✅ 출처 URL 포함 (없으면 synthetic)
-- ✅ 마케팅 톤의 ‘한 줄 요약’ 생성 (customer_card)
-- ❌ ‘재가열’ 항목은 출력하지 않음
+#### 프론트엔드 (Vue)
+```bash
+cd frontend
+npm run dev
+```
 
-──────────────────────────────
-📦 설치 및 실행
-──────────────────────────────
-pip install -r requirements.txt
+### 3. 접속
+- **프론트엔드**: http://localhost:5173
+- **API 문서**: http://localhost:8000/docs
 
-# 최종 결과(JSON)만 보기
-python agents/recipe_agent.py --debug --pretty
+---
 
-# 인벤토리 파일 지정 실행
-python agents/recipe_agent.py --debug --inv data/sample_inventory.json --pretty
+## 📚 문서
 
-환경변수 설정:
-export OPENAI_API_KEY="sk-..."
+자세한 내용은 다음 문서를 참고하세요:
 
-──────────────────────────────
-🔌 인터페이스 개요
-──────────────────────────────
-함수:
-suggest_recipes(ingredients: List[str], constraints: Dict[str, Any]) -> List[Dict[str, Any]]
+- [설치 가이드](docs/SETUP.md)
+- [기능 설명](docs/FEATURES.md)
+- [변경 이력](docs/CHANGELOG.md)
+- [데이터베이스 설계](docs/database_design.md)
 
-입력값 예시:
-{
-  "ingredients": ["계란", "양파", "대파"],
-  "constraints": {
-    "target_count": 3,
-    "max_missing": 2,
-    "diet": "low_sodium",
-    "time_max": 20
-  }
-}
+---
 
-──────────────────────────────
-📤 반환값 구조 (프론트 계약)
-──────────────────────────────
-[
-  {
-    "id": "dabc3dd854a96882",
-    "title": "대파 계란 볶음",
-    "ingredients": ["계란","대파","양파"],
-    "steps": ["대파와 양파를 볶는다", "풀어둔 계란을 넣는다", "간을 맞춘다"],
-    "time_minutes": 15,
-    "time_breakdown": {"prep":5, "cook":10, "total":15},
-    "servings": 2,
-    "difficulty": "쉬움",
-    "tags": ["한식","간단"],
-    "source": {"name": "한국 요리 블로그", "url": "https://koreanfoodblog.com"},
-    "nutrition": {"calories_kcal":250, "protein_g":15.0, "carbs_g":20.0, "fat_g":10.0, "sodium_mg":150},
-    "uses": ["계란","대파","양파"],
-    "missing": [],
-    "suitability": {
-      "summary": "빠르고 담백한 한 끼",
-      "health": "저염 조리로 부담 적음",
-      "inventory": "계란·대파·양파 활용",
-      "time": "15분 내",
-      "occasion": "일상 반찬",
-      "skill": "초보자 적합",
-      "tips": ["대파 먼저 볶아 향 올리기"]
-    },
-    "storage": "냉장 1일 권장",
-    "customer_card": "• 한 줄 요약: 냉장고 속 계란, 대파로 · 저염 한끼 · 집밥 감성 — 지금 바로 즐기는 「대파 계란 볶음」\n• 영양 요약(1인분): 250 kcal, 단백질 15.0g, 탄수화물 20.0g, 지방 10.0g, 나트륨 150mg\n• 추천 이유: 저염식, 인벤토리 최대 활용, 15분 컷\n• 냉장고에서 사용하는 재료: 계란, 대파, 양파\n• 보관: 냉장 1일 권장"
-  }
-]
+## 🏗️ 아키텍처
 
+### 에이전트 워크플로우
 
-=======
->>>>>>> you
+```
+사용자 입력
+    ↓
+ChatAgent (인텐트 감지)
+    ↓
+[분기]
+├─ 이미지 업로드 → ImageAgent → InventoryAgent → RecipeAgent
+├─ 챗봇 메시지 → ChatAgent → RecipeAgent
+└─ 재고 관리 → InventoryAgent
+    ↓
+DatabaseManager (SQLite)
+    ↓
+프론트엔드에 결과 반환
+```
+
+### 주요 에이전트
+
+#### ChatAgent
+- 사용자 메시지에서 인텐트 감지
+- `get_recipes`, `manage_inventory`, `general_chat` 분류
+- 특정 요리명 및 재료 추출
+
+#### RecipeAgent
+- 만개의레시피 API 검색
+- LLM 기반 레시피 생성
+- 재료 매칭 및 필터링
+- 영양 정보 제공
+
+#### InventoryAgent
+- 냉장고 재료 관리
+- 유통기한 자동 계산
+- 적절한 단위 부여
+
+#### ImageAgent
+- GPT-4o Vision으로 냉장고 사진 분석
+- 재료 및 수량 추출
+
+---
+
+## 🎨 UI/UX 특징
+
+- **다크 모드**: 눈의 피로를 줄이는 어두운 테마
+- **그라디언트 디자인**: 모던하고 세련된 인터페이스
+- **이모지 아이콘**: 직관적인 사용자 경험
+- **반응형**: 모바일/데스크톱 최적화
+- **부드러운 애니메이션**: 자연스러운 페이지 전환
+
+---
+
+## 🔐 보안
+
+- `.env` 파일은 Git에서 제외
+- API 키는 서버 측에서만 사용
+- 사용자 데이터는 로컬에 저장 (localStorage, SQLite)
+- CORS 설정으로 안전한 통신
+
+---
+
+## 🧪 테스트
+
+```bash
+# 백엔드 테스트
+pytest tests/
+
+# API 테스트
+# http://localhost:8000/docs 에서 각 엔드포인트 테스트
+```
+
+---
+
+## 📦 빌드 및 배포
+
+### 프론트엔드 빌드
+```bash
+cd frontend
+npm run build
+# 결과물: frontend/dist/
+```
+
+### 백엔드 프로덕션 실행
+```bash
+gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+---
+
+## 🤝 브랜치 전략
+
+- `main`: 프로덕션 안정 버전
+- `dev`: 통합 개발 브랜치
+- `feat/*`: 개인 기능 브랜치 → PR → `dev`
+- `fix/*`: 버그 수정 브랜치
+
+---
+
+## 📝 라이센스
+
+이 프로젝트는 교육 및 연구 목적으로 제작되었습니다.
+
+---
+
+## 🙏 기여
+
+프로젝트 개선 아이디어나 버그 리포트는 언제든 환영합니다!
+
+---
+
+**미리 (MIRI)** - 당신의 식탁을 미리 준비합니다 🍳
