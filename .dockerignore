@@ -14,15 +14,15 @@ venv/
 .dockerignore
 Dockerfile
 docker-compose.yml
-.env
-README.md
 *.DS_Store
 
 # 빌드에 불필요한 폴더
-data/
+data/*.db
 docs/
 tests/
+frontend.backup/
 
 # 프론트엔드 빌드 캐시
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/

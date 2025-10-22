@@ -19,3 +19,11 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Development data
+data/*.db
+
+# Frontend
+frontend/.vite/
+frontend.backup/
+node_modules/

@@ -20,26 +20,56 @@ class InventoryAgent:
         self.llm = ChatOpenAI(model="gpt-4o", temperature=0)
         self.db_manager = DatabaseManager()
 
-    def get_shelf_life_from_llm(self, item_names: list[str]) -> dict:
+    def get_shelf_life_and_units_from_llm(self, items: list[dict]) -> dict:
         """
-        LLM에게 식재료 리스트의 평균 유통기한(일)을 물어보고 JSON으로 받습니다.
+        LLM에게 식재료 리스트의 평균 유통기한(일)과 적절한 단위를 물어보고 JSON으로 받습니다.
         """
-        if not item_names:
+        if not items:
             return {}
 
-        item_list_str = ", ".join(item_names)
-        
+        items_info = []
+        for item in items:
+            item_name = item.get("item_name", "")
+            quantity = item.get("quantity", "")
+            items_info.append(f"{item_name}: {quantity}")
+
+        items_str = "\n".join(items_info)
+
         prompt = f"""
         당신은 식품 영양 전문가입니다.
-        다음 식재료 목록 각각의 평균적인 냉장 보관 시 유통기한이 며칠인지 알려주세요.
-        결과는 반드시 JSON 형식이어야 하며, key는 식재료 이름, value는 유통기한(일)을 정수(integer)로 해야 합니다.
-        다른 설명은 절대 추가하지 마세요.
+        다음 식재료 목록 각각에 대해:
+        1. 평균적인 냉장 보관 시 유통기한이 며칠인지
+        2. 수량에 적절한 단위(예: 개, 팩, g, ml, 봉지, 병, 통 등)를 붙인 정규화된 수량
+
+        결과는 반드시 JSON 형식이어야 하며, 다른 설명은 절대 추가하지 마세요.
 
         [식재료 목록]
-        {item_list_str}
+        {items_str}
+
+        [출력 형식]
+        {{
+            "재료명": {{
+                "shelf_life": 유통기한(일수, 정수),
+                "quantity_with_unit": "정규화된 수량과 단위"
+            }}
+        }}
 
         [출력 예시]
-        {{"계란": 21, "우유": 10, "상추": 5}}
+        {{
+            "계란": {{"shelf_life": 21, "quantity_with_unit": "10개"}},
+            "우유": {{"shelf_life": 10, "quantity_with_unit": "1L"}},
+            "토마토": {{"shelf_life": 7, "quantity_with_unit": "3개"}},
+            "쌀": {{"shelf_life": 180, "quantity_with_unit": "5kg"}},
+            "물": {{"shelf_life": 365, "quantity_with_unit": "2L"}},
+            "김치": {{"shelf_life": 30, "quantity_with_unit": "1통"}}
+        }}
+
+        주의사항:
+        - 수량이 숫자만 있으면 해당 재료에 맞는 적절한 단위를 추가하세요
+        - 수량에 이미 단위가 있으면 그대로 사용하되, 표준 단위로 변환하세요
+        - 개수로 세는 것: 개, 마리, 포기, 알 등
+        - 포장 단위: 팩, 봉지, 병, 통, 캔 등
+        - 무게/부피: kg, g, L, ml 등
         """
 
         try:
@@ -47,20 +77,28 @@ class InventoryAgent:
             cleaned_response = response.content.strip().replace('```json', '').replace('```', '').strip()
             return json.loads(cleaned_response)
         except Exception as e:
-            print(f"LLM 유통기한 분석 중 오류 발생: {e}")
+            print(f"LLM 유통기한 및 단위 분석 중 오류 발생: {e}")
             return {}
+
+    def get_shelf_life_from_llm(self, item_names: list[str]) -> dict:
+        """
+        LLM에게 식재료 리스트의 평균 유통기한(일)을 물어보고 JSON으로 받습니다.
+        (하위 호환성을 위해 유지)
+        """
+        items = [{"item_name": name, "quantity": "1"} for name in item_names]
+        result = self.get_shelf_life_and_units_from_llm(items)
+        return {name: data.get("shelf_life", 7) for name, data in result.items()}
 
     def update_inventory(self, new_items: list[dict]) -> dict:
         """
-        새로운 식재료로 재고를 업데이트하고, LLM을 통해 유통기한을 추정하여 DB에 기록합니다.
+        새로운 식재료로 재고를 업데이트하고, LLM을 통해 유통기한과 단위를 추정하여 DB에 기록합니다.
         기존 재고는 유지되며, 새로운 아이템이 추가되거나 수량이 변경됩니다.
         """
-        print(f"Inventory Agent: 재고 업데이트 및 LLM 유통기한 추정을 시작합니다. (신규/업데이트 항목: {len(new_items)}개)")
-        
-        item_names = [item.get("item_name") for item in new_items if item.get("item_name")]
-        
-        shelf_life_data = self.get_shelf_life_from_llm(item_names)
-        print(f"LLM이 추정한 유통기한 정보: {shelf_life_data}")
+        print(f"Inventory Agent: 재고 업데이트 및 LLM 유통기한/단위 추정을 시작합니다. (신규/업데이트 항목: {len(new_items)}개)")
+
+        # LLM을 사용하여 유통기한과 단위가 포함된 수량 정보 가져오기
+        llm_data = self.get_shelf_life_and_units_from_llm(new_items)
+        print(f"LLM이 추정한 정보: {llm_data}")
 
         today = datetime.now()
         DEFAULT_SHELF_LIFE = 7
@@ -69,19 +107,23 @@ class InventoryAgent:
             item_name = item.get("item_name")
             if not item_name:
                 continue
-            
-            shelf_life_days = shelf_life_data.get(item_name, DEFAULT_SHELF_LIFE)
+
+            # LLM 데이터에서 유통기한과 단위가 포함된 수량 가져오기
+            item_data = llm_data.get(item_name, {})
+            shelf_life_days = item_data.get("shelf_life", DEFAULT_SHELF_LIFE)
+            quantity_with_unit = item_data.get("quantity_with_unit", item.get("quantity", "1개"))
+
             expiry_date = today + timedelta(days=shelf_life_days)
-            
+
             self.db_manager.upsert_inventory_item(
                 item_name=item_name,
-                quantity=item.get("quantity"),
+                quantity=quantity_with_unit,
                 added_date=today.strftime("%Y-%m-%d"),
                 expiry_date=expiry_date.strftime("%Y-%m-%d")
             )
 
         print("Inventory Agent: 데이터베이스 재고 업데이트를 완료했습니다.")
-        
+
         # DB에서 최종 재고를 다시 불러와 반환
         updated_inventory = self.db_manager.get_inventory()
         return updated_inventory

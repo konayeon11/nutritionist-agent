@@ -26,7 +26,10 @@ class ChatAgent:
         - 'update_preferences': 사용자 선호도를 업데이트하려는 경우.
         - 'general_chat': 위 범주에 속하지 않는 일반적인 대화.
 
-        'get_recipes' 의도일 경우, 메시지에서 레시피 추천에 필요한 'ingredients' (리스트)를 추출하세요.
+        'get_recipes' 의도일 경우:
+        - 'ingredients' (리스트): 레시피 추천에 필요한 재료 목록
+        - 'dish_name' (문자열, 선택): 사용자가 특정 요리명을 언급했다면 그 요리명 (예: "감자전", "김치찌개", "된장국")
+
         'add_inventory' 의도일 경우, 메시지에서 추가할 'item_name' (문자열)과 'quantity' (문자열)를 추출하세요.
         'update_preferences' 의도일 경우, 'allergies' (리스트), 'dislikes' (리스트), 'dietary_goals' (문자열) 등을 추출하세요.
 
@@ -42,6 +45,12 @@ class ChatAgent:
 
         사용자 메시지: 김
         출력: {{"intent": "get_recipes", "ingredients": ["김"]}}
+
+        사용자 메시지: 감자전 만들고 싶어
+        출력: {{"intent": "get_recipes", "ingredients": ["감자"], "dish_name": "감자전"}}
+
+        사용자 메시지: 김치찌개 레시피 알려줘
+        출력: {{"intent": "get_recipes", "ingredients": ["김치"], "dish_name": "김치찌개"}}
 
         사용자 메시지: 내 냉장고에 뭐가 있는지 알려줘
         출력: {{"intent": "get_inventory"}}
