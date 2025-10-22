@@ -96,8 +96,15 @@ def run_recipe_agent(state: AgentState) -> dict:
         inventory_items = list(inventory.keys()) if inventory else []
         all_ingredients = list(set(ingredients + inventory_items))
 
-    # constraints에 dish_name 추가 (챗봇에서 특정 요리명을 언급한 경우)
+    # constraints에 dish_name과 prompt 추가 (챗봇에서 특정 요리명을 언급한 경우)
     constraints = state.get("constraints") or {}
+
+    # 사용자의 원본 메시지를 prompt로 전달
+    chat_message = state.get("chat_message")
+    if chat_message:
+        constraints["prompt"] = chat_message
+        print(f"사용자 요청: {chat_message}")
+
     if intent.get("dish_name"):
         constraints["dish_name"] = intent["dish_name"]
         print(f"특정 요리 검색: {intent['dish_name']}")

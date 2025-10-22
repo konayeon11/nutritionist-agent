@@ -184,7 +184,7 @@ def _search_external_recipes(inventory: List[str], constraints: Dict[str, Any], 
     elif prompt:
         # 프롬프트에서 핵심 키워드 추출 (고기, 채소, 해산물 등)
         keywords = []
-        key_ingredients = ["고기", "닭고기", "돼지고기", "소고기", "생선", "해산물", "채소", "야채"]
+        key_ingredients = ["고기", "닭고기", "돼지고기", "소고기", "한우", "삼겹살", "목살", "생선", "해산물", "새우", "오징어", "채소", "야채", "버섯"]
         for keyword in key_ingredients:
             if keyword in prompt:
                 keywords.append(keyword)
