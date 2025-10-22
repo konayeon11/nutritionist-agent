@@ -11,6 +11,7 @@ from pydantic import BaseModel # Pydantic BaseModel 임포트
 # --- LangGraph 워크플로우와 필요한 에이전트를 가져옵니다 ---
 from core.graph_builder import app as agent_workflow, image_app # image_app 임포트
 from agents.inventory_agent import InventoryAgent
+from core.database import DatabaseManager
 
 # --- FastAPI 앱 초기화 ---
 app = FastAPI(title="AI 영양사 에이전트 API", version="0.1.0")
@@ -23,6 +24,8 @@ class ChatMessage(BaseModel):
 origins = [
     "http://localhost:5173",  # Vue.js 개발 서버 기본 포트
     "http://127.0.0.1:5173",
+    "http://localhost:5174",  # Vue.js 개발 서버 대체 포트
+    "http://127.0.0.1:5174",
 ]
 
 app.add_middleware(
@@ -35,6 +38,12 @@ app.add_middleware(
 
 
 # --- API 엔드포인트(기능 목록) 정의 ---
+
+# 헬스 체크 엔드포인트
+@app.get("/health", tags=["시스템"])
+async def health_check():
+    """서버 상태를 확인합니다."""
+    return {"status": "ok", "message": "서버가 정상적으로 동작 중입니다."}
 
 # ✨ 워크플로우를 직접 호출하는 새로운 통합 엔드포인트 ✨
 @app.post("/analyze-and-suggest", tags=["핵심 기능"])
@@ -69,7 +78,8 @@ async def analyze_and_suggest(
     return {
         "inventory": recognized_inventory,
         "recipes": final_state.get("recipes", []),
-        "shopping_list": final_state.get("shopping_list")
+        "shopping_list": final_state.get("shopping_list"),
+        "quests": final_state.get("quests", [])
     }
 
 @app.post("/chat", tags=["챗봇"])
@@ -102,8 +112,8 @@ async def chat_with_agent(chat_request: ChatMessage):
 @app.get("/inventory", tags=["보조 기능"])
 def read_inventory():
     """현재 저장된 재고 목록을 보여줍니다."""
-    inventory_agent = InventoryAgent()
-    current_inventory = inventory_agent.load_inventory()
+    db_manager = DatabaseManager()
+    current_inventory = db_manager.get_inventory()
     return {"items": current_inventory}
 
 # (다른 미구현 엔드포인트들은 그대로 유지됩니다)

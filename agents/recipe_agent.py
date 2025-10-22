@@ -144,36 +144,60 @@ def _openai_call(system: str, user_payload: Dict[str, Any], constraints: Dict[st
 def _search_external_recipes(inventory: List[str], constraints: Dict[str, Any], num_results: int = 5) -> List[Dict[str, Any]]:
     """
     한국 레시피 사이트에서 레시피 검색 및 크롤링
-    
+
     지원 사이트:
     - 만개의레시피 (10000recipe.com)
-    
+
     Args:
         inventory: 사용자의 재료 목록
-        constraints: 검색 제약 조건
+        constraints: 검색 제약 조건 (dish_name이 있으면 우선 사용)
         num_results: 최대 반환 결과 수
-    
+
     Returns:
         검색된 레시피 정보 리스트 (title, url, snippet 포함)
     """
     logger.info(f"외부 레시피 검색 시작 (재료: {len(inventory)}개)")
-    
+
     if not inventory:
         logger.warning("재료 목록이 비어있어 검색을 건너뜁니다.")
         return []
-    
+
     try:
         import requests
         from bs4 import BeautifulSoup
     except ImportError:
         logger.warning("requests 또는 beautifulsoup4가 설치되지 않았습니다. pip install requests beautifulsoup4")
         return []
-    
+
     results = []
-    
-    # 상위 3개 재료로 검색 쿼리 구성
-    search_query = " ".join(inventory[:3])
-    logger.info(f"검색 쿼리: '{search_query}'")
+
+    # 검색 쿼리 구성 우선순위:
+    # 1. dish_name (특정 요리명)
+    # 2. prompt에서 핵심 키워드 추출 + 재료
+    # 3. 상위 3개 재료
+    dish_name = constraints.get("dish_name")
+    prompt = constraints.get("prompt", "")
+
+    if dish_name:
+        search_query = dish_name
+        logger.info(f"요리명으로 검색: '{search_query}'")
+    elif prompt:
+        # 프롬프트에서 핵심 키워드 추출 (고기, 채소, 해산물 등)
+        keywords = []
+        key_ingredients = ["고기", "닭고기", "돼지고기", "소고기", "생선", "해산물", "채소", "야채"]
+        for keyword in key_ingredients:
+            if keyword in prompt:
+                keywords.append(keyword)
+
+        if keywords:
+            search_query = " ".join(keywords[:2] + inventory[:2])
+            logger.info(f"사용자 요청 반영 검색: '{search_query}'")
+        else:
+            search_query = " ".join(inventory[:3])
+            logger.info(f"재료로 검색: '{search_query}'")
+    else:
+        search_query = " ".join(inventory[:3])
+        logger.info(f"재료로 검색: '{search_query}'")
     
     try:
         # 만개의레시피 검색
@@ -260,6 +284,8 @@ def _openai_generate_recipes(inventory: List[str], constraints: Dict[str, Any], 
     
     # 2. LLM 프롬프트 구성 (검색 결과 포함)
     user_constraints_str = ""
+    if constraints.get("prompt"):
+        user_constraints_str += f" - 사용자 요청: {constraints['prompt']} (이 요청을 최우선으로 반영해주세요!)\n"
     if constraints.get("allergies"):
         user_constraints_str += f" - 알레르기: {', '.join(constraints['allergies'])} (이 재료는 절대 사용하지 마세요.)\n"
     if constraints.get("preferences", {}).get("dislikes"):

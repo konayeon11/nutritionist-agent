@@ -9,6 +9,7 @@ from agents.inventory_agent import InventoryAgent
 from agents.recipe_agent import suggest_recipes as suggest_recipes_from_agent
 from agents.planner_agent import create_daily_plan_and_shopping_list
 from agents.chat_agent import ChatAgent # ChatAgent 임포트
+from agents.quest_agent import generate_daily_quests # QuestAgent 임포트
 from core.models import DailyMealPlan, ShoppingList # DatabaseManager 임포트
 from core.database import DatabaseManager
 
@@ -24,6 +25,7 @@ class AgentState(TypedDict):
     recipes: List[Dict]
     meal_plan: Optional[DailyMealPlan]
     shopping_list: Optional[ShoppingList]
+    quests: List[Dict[str, Any]] # 일일 퀘스트
     response: Optional[str] # 챗봇 응답을 위한 필드 추가
 
 # --- 에이전트 인스턴스 ---
@@ -67,15 +69,40 @@ def run_recipe_agent(state: AgentState) -> dict:
     print("--- 3. Recipe Agent 실행 ---")
     # ingredients는 vision_node 또는 chat_node에서 올 수 있음
     ingredients = state.get("ingredients")
-    if not ingredients and state.get("intent") and state["intent"].get("ingredients"):
-        ingredients = state["intent"]["ingredients"]
-    
+    intent = state.get("intent", {})
+
+    if not ingredients and intent.get("ingredients"):
+        ingredients = intent["ingredients"]
+
     if not ingredients:
         print("레시피 추천을 위한 재료가 없습니다.")
         return {"recipes": []}
 
+    # 챗봇에서 레시피 요청 시, 현재 인벤토리를 DB에서 가져와서 필터링에 사용
+    inventory = state.get("inventory")
+    if not inventory:
+        db_manager = DatabaseManager()
+        try:
+            inventory_dict = db_manager.get_inventory()
+            db_manager.close()
+            inventory_items = list(inventory_dict.keys()) if inventory_dict else []
+            # 검색어(ingredients)와 인벤토리를 결합
+            all_ingredients = list(set(ingredients + inventory_items))
+        except Exception as e:
+            print(f"인벤토리 로드 실패: {e}")
+            all_ingredients = ingredients
+    else:
+        # 이미지 분석에서 온 경우, inventory는 딕셔너리 형태
+        inventory_items = list(inventory.keys()) if inventory else []
+        all_ingredients = list(set(ingredients + inventory_items))
+
+    # constraints에 dish_name 추가 (챗봇에서 특정 요리명을 언급한 경우)
     constraints = state.get("constraints") or {}
-    recipes = suggest_recipes_from_agent(ingredients=ingredients, constraints=constraints)
+    if intent.get("dish_name"):
+        constraints["dish_name"] = intent["dish_name"]
+        print(f"특정 요리 검색: {intent['dish_name']}")
+
+    recipes = suggest_recipes_from_agent(ingredients=all_ingredients, constraints=constraints)
     return {"recipes": recipes}
 
 # --- ✨ PlannerAgent를 위한 노드 수정 ✨ ---
@@ -94,6 +121,19 @@ def run_planner_agent(state: AgentState) -> dict:
     )
     
     return {"meal_plan": meal_plan, "shopping_list": shopping_list}
+
+def run_quest_agent(state: AgentState) -> dict:
+    print("--- 4.5. Quest Agent 실행 ---")
+    recipes = state.get("recipes", [])
+    inventory = state.get("inventory", {})
+    constraints = state.get("constraints") or {}
+
+    if not recipes:
+        print("퀘스트 생성을 위한 레시피가 없습니다.")
+        return {"quests": []}
+
+    quests = generate_daily_quests(recipes, inventory, constraints)
+    return {"quests": quests}
 
 def log_meal_history(state: AgentState) -> dict:
     print("--- 5. 식단 기록 에이전트 실행 ---")
@@ -227,6 +267,7 @@ workflow.add_node("vision_node", run_vision_agent)
 workflow.add_node("inventory_node", run_inventory_agent)
 workflow.add_node("recipe_node", run_recipe_agent)
 workflow.add_node("planner_node", run_planner_agent)
+workflow.add_node("quest_node", run_quest_agent)
 workflow.add_node("log_meal_node", log_meal_history)
 workflow.add_node("add_inventory_node", add_inventory_item_node)
 workflow.add_node("update_preferences_node", update_preferences_node)
@@ -254,7 +295,8 @@ workflow.add_edge("vision_node", "inventory_node") # 이미지 분석 -> 재고 
 workflow.add_edge("inventory_node", "recipe_node") # 재고 업데이트 -> 레시피 추천 (기존 워크플로우)
 
 workflow.add_edge("recipe_node", "planner_node")
-workflow.add_edge("planner_node", "log_meal_node")
+workflow.add_edge("planner_node", "quest_node")  # 플래너 -> 퀘스트 생성
+workflow.add_edge("quest_node", "log_meal_node")  # 퀘스트 -> 식단 기록
 workflow.add_edge("log_meal_node", END)
 
 workflow.add_edge("add_inventory_node", END) # 재고 추가는 바로 종료
@@ -272,22 +314,15 @@ image_workflow.add_node("vision_node", run_vision_agent)
 image_workflow.add_node("inventory_node", run_inventory_agent)
 image_workflow.add_node("recipe_node", run_recipe_agent)
 image_workflow.add_node("planner_node", run_planner_agent)
-image_workflow.add_node("log_meal_node", log_meal_history)
-
-# --- 이미지 분석 전용 워크플로우 --- #
-image_workflow = StateGraph(AgentState)
-
-image_workflow.add_node("vision_node", run_vision_agent)
-image_workflow.add_node("inventory_node", run_inventory_agent)
-image_workflow.add_node("recipe_node", run_recipe_agent)
-image_workflow.add_node("planner_node", run_planner_agent)
+image_workflow.add_node("quest_node", run_quest_agent)
 image_workflow.add_node("log_meal_node", log_meal_history)
 
 image_workflow.set_entry_point("vision_node")
 image_workflow.add_edge("vision_node", "inventory_node")
 image_workflow.add_edge("inventory_node", "recipe_node")
 image_workflow.add_edge("recipe_node", "planner_node")
-image_workflow.add_edge("planner_node", "log_meal_node")
+image_workflow.add_edge("planner_node", "quest_node")
+image_workflow.add_edge("quest_node", "log_meal_node")
 image_workflow.add_edge("log_meal_node", END)
 
 image_app = image_workflow.compile()
