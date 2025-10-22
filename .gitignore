@@ -27,3 +27,5 @@ data/*.db
 frontend/.vite/
 frontend.backup/
 node_modules/
+*.db
+data/*.db
