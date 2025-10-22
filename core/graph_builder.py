@@ -285,27 +285,11 @@ workflow.add_node("general_chat_node", general_chat_response_node)
 workflow.set_entry_point("chat_node")
 
 # 조건부 엣지 추가
-# 챗봇 레시피 추천을 위한 전용 노드 (퀘스트 없음)
-def run_recipe_node_for_chat(state: AgentState) -> dict:
-    """챗봇용 레시피 노드 - 퀘스트 생성 없이 레시피만 반환"""
-    result = run_recipe_agent(state)
-    recipes = result.get("recipes", [])
-
-    # 응답 메시지 생성
-    if recipes:
-        response = f"🍳 {len(recipes)}개의 레시피를 찾았습니다!"
-    else:
-        response = "죄송합니다. 조건에 맞는 레시피를 찾지 못했습니다."
-
-    return {"recipes": recipes, "response": response}
-
-workflow.add_node("recipe_node_chat", run_recipe_node_for_chat)
-
 workflow.add_conditional_edges(
     "chat_node",
     lambda state: state["intent"]["intent"],
     {
-        "get_recipes": "recipe_node_chat",  # 챗봇은 퀘스트 없는 레시피 노드로
+        "get_recipes": "recipe_node",  # 챗봇도 일반 레시피 노드 사용
         "get_inventory": "get_inventory_node",
         "add_inventory": "add_inventory_node",
         "update_preferences": "update_preferences_node",
@@ -322,7 +306,6 @@ workflow.add_edge("planner_node", "quest_node")  # 플래너 -> 퀘스트 생성
 workflow.add_edge("quest_node", "log_meal_node")  # 퀘스트 -> 식단 기록
 workflow.add_edge("log_meal_node", END)
 
-workflow.add_edge("recipe_node_chat", END) # 챗봇 레시피는 바로 종료 (퀘스트 없음)
 workflow.add_edge("add_inventory_node", END) # 재고 추가는 바로 종료
 workflow.add_edge("update_preferences_node", END) # 선호도 업데이트는 바로 종료
 workflow.add_edge("get_inventory_node", END) # 재고 조회는 바로 종료
