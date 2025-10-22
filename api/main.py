@@ -19,6 +19,7 @@ app = FastAPI(title="AI 영양사 에이전트 API", version="0.1.0")
 # --- Pydantic 모델 정의 ---
 class ChatMessage(BaseModel):
     message: str
+    constraints: Optional[dict] = {}
 
 # --- CORS 설정 ---
 origins = [
@@ -90,7 +91,10 @@ async def chat_with_agent(chat_request: ChatMessage):
     챗봇 형식으로 AI 에이전트와 대화합니다.
     사용자 메시지를 받아 적절한 응답을 반환합니다.
     """
-    initial_state = {"chat_message": chat_request.message}
+    initial_state = {
+        "chat_message": chat_request.message,
+        "constraints": chat_request.constraints or {}
+    }
     final_state = agent_workflow.invoke(initial_state)
     
     response_data = {

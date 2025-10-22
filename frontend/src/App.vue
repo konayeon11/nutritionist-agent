@@ -308,6 +308,17 @@
                 <span class="form-hint">레시피 추천에 참고됩니다</span>
               </div>
 
+              <div class="form-group">
+                <label for="allergies">🚫 알레르기</label>
+                <input
+                  id="allergies"
+                  type="text"
+                  v-model="userProfile.allergies"
+                  placeholder="예: 새우, 땅콩, 우유"
+                />
+                <span class="form-hint">알레르기가 있는 식재료를 쉼표(,)로 구분하여 입력하세요</span>
+              </div>
+
               <button class="save-profile-btn" @click="saveProfile">
                 💾 정보 저장
               </button>
@@ -439,7 +450,8 @@ const chatLatestRecipes = ref([]);
 const userProfile = reactive({
   goal: '체중 관리',
   diet: '일반식',
-  age: 30
+  age: 30,
+  allergies: ''
 });
 const profileSaved = ref(false);
 
@@ -499,11 +511,18 @@ const analyzeImage = async () => {
   try {
     const formData = new FormData();
     formData.append('file', selectedFile.value);
+
+    // 알레르기 문자열을 배열로 변환
+    const allergiesList = userProfile.allergies
+      ? userProfile.allergies.split(',').map(item => item.trim()).filter(item => item)
+      : [];
+
     formData.append('constraints', JSON.stringify({
       prompt: promptText.value || '레시피 추천',
       dietary_goals: userProfile.diet || userProfile.goal,  // 식단 선호도 또는 목표
       user_goal: userProfile.goal,  // 건강 목표
-      user_age: userProfile.age      // 나이
+      user_age: userProfile.age,     // 나이
+      allergies: allergiesList        // 알레르기 목록
     }));
 
     const response = await fetch('http://127.0.0.1:8000/analyze-and-suggest', {
@@ -648,7 +667,18 @@ const sendChatMessage = async () => {
 const handleChatImageQuery = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('constraints', JSON.stringify({}));
+
+  // 알레르기 문자열을 배열로 변환
+  const allergiesList = userProfile.allergies
+    ? userProfile.allergies.split(',').map(item => item.trim()).filter(item => item)
+    : [];
+
+  formData.append('constraints', JSON.stringify({
+    dietary_goals: userProfile.diet || userProfile.goal,
+    user_goal: userProfile.goal,
+    user_age: userProfile.age,
+    allergies: allergiesList
+  }));
 
   try {
     const response = await fetch('http://127.0.0.1:8000/analyze-and-suggest', {
@@ -666,10 +696,23 @@ const handleChatImageQuery = async (file) => {
 // 챗봇 텍스트 쿼리
 const handleChatTextQuery = async (textMessage) => {
   try {
+    // 알레르기 문자열을 배열로 변환
+    const allergiesList = userProfile.allergies
+      ? userProfile.allergies.split(',').map(item => item.trim()).filter(item => item)
+      : [];
+
     const response = await fetch('http://127.0.0.1:8000/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: textMessage }),
+      body: JSON.stringify({
+        message: textMessage,
+        constraints: {
+          dietary_goals: userProfile.diet || userProfile.goal,
+          user_goal: userProfile.goal,
+          user_age: userProfile.age,
+          allergies: allergiesList
+        }
+      }),
     });
     if (!response.ok) throw new Error(`서버 오류: ${response.status}`);
     const result = await response.json();
