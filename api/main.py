@@ -26,6 +26,8 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",  # Vue.js 개발 서버 대체 포트
     "http://127.0.0.1:5174",
+    "http://localhost:3000",  # Docker 프론트엔드 포트
+    "http://127.0.0.1:3000",
 ]
 
 app.add_middleware(
