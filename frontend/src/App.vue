@@ -500,7 +500,10 @@ const analyzeImage = async () => {
     const formData = new FormData();
     formData.append('file', selectedFile.value);
     formData.append('constraints', JSON.stringify({
-      prompt: promptText.value || '레시피 추천'
+      prompt: promptText.value || '레시피 추천',
+      dietary_goals: userProfile.diet || userProfile.goal,  // 식단 선호도 또는 목표
+      user_goal: userProfile.goal,  // 건강 목표
+      user_age: userProfile.age      // 나이
     }));
 
     const response = await fetch('http://127.0.0.1:8000/analyze-and-suggest', {

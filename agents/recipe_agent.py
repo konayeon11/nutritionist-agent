@@ -292,6 +292,10 @@ def _openai_generate_recipes(inventory: List[str], constraints: Dict[str, Any], 
         user_constraints_str += f" - 기피 재료: {', '.join(constraints['preferences']['dislikes'])} (이 재료는 사용하지 마세요.)\n"
     if constraints.get("dietary_goals"):
         user_constraints_str += f" - 식단 목표: {constraints['dietary_goals']}\n"
+    if constraints.get("user_goal"):
+        user_constraints_str += f" - 건강 목표: {constraints['user_goal']}\n"
+    if constraints.get("user_age"):
+        user_constraints_str += f" - 나이: {constraints['user_age']}세\n"
     if constraints.get("time_max"):
         user_constraints_str += f" - 최대 소요 시간: {constraints['time_max']}분 이내\n"
 
