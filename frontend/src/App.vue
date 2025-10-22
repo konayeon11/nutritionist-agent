@@ -218,6 +218,49 @@
             </div>
           </div>
         </section>
+
+        <!-- 챗봇 내 레시피 상세 보기 (인라인) -->
+        <section v-if="selectedRecipe" class="panel recipe-detail-inline" style="margin-top: 16px;">
+          <div class="ph" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>📖 {{ selectedRecipe.title }}</span>
+            <button @click="selectedRecipe = null" class="close-btn">✕ 닫기</button>
+          </div>
+          <div class="section">
+            <div v-if="selectedRecipe.image" style="margin-bottom:16px;">
+              <img :src="selectedRecipe.image" :alt="selectedRecipe.title" style="width:100%;border-radius:8px;"/>
+            </div>
+
+            <div class="detail-meta">
+              <span v-if="selectedRecipe.time_minutes">⏱️ {{ selectedRecipe.time_minutes }}분</span>
+              <span v-if="selectedRecipe.servings">🍽️ {{ selectedRecipe.servings }}인분</span>
+              <span v-if="selectedRecipe.difficulty">📊 {{ selectedRecipe.difficulty }}</span>
+            </div>
+
+            <div v-if="selectedRecipe.nutrition" class="nutrition-info">
+              <h4>영양 정보 (1인분 기준)</h4>
+              <div class="nutrition-grid">
+                <span>🔥 {{ selectedRecipe.nutrition.calories_kcal }}kcal</span>
+                <span>💪 단백질 {{ selectedRecipe.nutrition.protein_g }}g</span>
+                <span>🍚 탄수화물 {{ selectedRecipe.nutrition.carbs_g }}g</span>
+                <span>🧈 지방 {{ selectedRecipe.nutrition.fat_g }}g</span>
+              </div>
+            </div>
+
+            <div v-if="selectedRecipe.ingredients" class="ingredients">
+              <h4>🥘 필요한 재료</h4>
+              <ul>
+                <li v-for="(ing, i) in selectedRecipe.ingredients" :key="i">{{ ing }}</li>
+              </ul>
+            </div>
+
+            <div v-if="selectedRecipe.steps" class="steps">
+              <h4>👨‍🍳 조리 순서</h4>
+              <ol>
+                <li v-for="(step, i) in selectedRecipe.steps" :key="i">{{ step }}</li>
+              </ol>
+            </div>
+          </div>
+        </section>
       </template>
 
       <!-- 프로필 뷰 -->
@@ -530,9 +573,19 @@ const completeQuest = (quest) => {
 // 레시피 상세 보기
 const viewRecipeDetail = (recipe) => {
   selectedRecipe.value = recipe;
-  previousView.value = currentView.value; // 현재 페이지를 기억
-  currentView.value = 'recipeDetail';
-  window.scrollTo(0, 0);
+  // 챗봇에서는 페이지 이동 없이 인라인 표시
+  if (currentView.value === 'chatbot') {
+    // 챗봇 내에서 스크롤만
+    nextTick(() => {
+      const detailEl = document.querySelector('.recipe-detail-inline');
+      if (detailEl) detailEl.scrollIntoView({ behavior: 'smooth' });
+    });
+  } else {
+    // 다른 뷰에서는 페이지 전환
+    previousView.value = currentView.value;
+    currentView.value = 'recipeDetail';
+    window.scrollTo(0, 0);
+  }
 };
 
 // 레시피 상세 닫기
@@ -1842,5 +1895,91 @@ button:disabled {
 .nav-icon {
   font-size: 24px;
   margin-bottom: 2px;
+}
+
+/* 챗봇 내 레시피 상세보기 스타일 */
+.recipe-detail-inline {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.close-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.detail-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.nutrition-info, .ingredients, .steps {
+  margin-top: 20px;
+}
+
+.nutrition-info h4, .ingredients h4, .steps h4 {
+  color: var(--text);
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.nutrition-grid span {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%);
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.ingredients ul, .steps ol {
+  padding-left: 24px;
+  color: var(--text);
+}
+
+.ingredients li, .steps li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.steps li {
+  margin-bottom: 12px;
 }
 </style>
